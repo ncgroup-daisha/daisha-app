@@ -57,19 +57,38 @@
   <script>
 const appUrl = 'https://script.google.com/macros/s/AKfycbzCPT13mAMnWeY_LOsYwXVU8QsCusVjevbTEQrmcG7vSxFfxraP2i_eQIcUD-UVAc605Q/exec';
 const tokenKey = 'ncgroup.daisha.browserToken.v1';
+const authKey = 'ncgroup.daisha.intakeDevice.v1';
 const vehicle = new URLSearchParams(window.location.search).get('vehicle') || '';
 const validVehicle = /^[VR][0-9]{3}$/.test(vehicle);
-let token = '';
-const supplied = window.location.hash.match(/^#ncgDevice=([a-f0-9]{64})$/);
-if (supplied) token = supplied[1];
-else if (!window.location.hash) { try { const cached = localStorage.getItem(tokenKey); if (/^[a-f0-9]{64}$/.test(cached || '')) token = cached; } catch (_) {} }
-if (token) { try { localStorage.setItem(tokenKey, token); } catch (_) {} window.history.replaceState(null, '', window.location.pathname + window.location.search + '#ncgDevice=' + token); }
-const destination = appUrl + '?v=20261008' + (validVehicle ? '&vehicle=' + encodeURIComponent(vehicle) : '') + (token ? '#ncgDevice=' + token : '');
-document.getElementById('openApp').href = destination;
-const installed = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
-if (installed || validVehicle) {
-  document.querySelector('main').innerHTML = '<img src="icon.png?v=20261008" alt="NCGroup"><p role="status">読み込み中…</p>';
-  requestAnimationFrame(() => requestAnimationFrame(() => window.location.replace(destination)));
+const fragment = new URLSearchParams(window.location.hash.replace(/^#/,''));
+const keys = [...fragment.keys()];
+const supplied = fragment.get('ncgDevice') || '';
+const authSupplied = fragment.get('ncgIntake') || '';
+const clearAuth = fragment.get('clearIntake') === '1';
+const validFragment = keys.every(k=>['ncgDevice','ncgIntake','clearIntake'].includes(k)) && new Set(keys).size===keys.length && (!supplied || /^[a-f0-9]{64}$/.test(supplied)) && (!authSupplied || /^DEVICE-[a-f0-9-]{72}$/.test(authSupplied)) && (!fragment.has('clearIntake') || clearAuth);
+let token='',auth='',savedAuth=false;
+if(validFragment) {
+  try {
+    if(supplied)localStorage.setItem(tokenKey,supplied);
+    const cached=supplied||localStorage.getItem(tokenKey)||'';if(/^[a-f0-9]{64}$/.test(cached))token=cached;
+    if(clearAuth)localStorage.removeItem(authKey);
+    else if(authSupplied){localStorage.setItem(authKey,authSupplied);savedAuth=localStorage.getItem(authKey)===authSupplied;}
+    const cachedAuth=clearAuth?'':authSupplied||localStorage.getItem(authKey)||'';if(/^DEVICE-[a-f0-9-]{72}$/.test(cachedAuth))auth=cachedAuth;
+  } catch (_) {token=supplied;auth=clearAuth?'':authSupplied;}
+}
+const entryHash=(token?'ncgDevice='+token:'')+(auth?(token?'&':'')+'ncgIntake='+auth:'');
+if(entryHash)window.history.replaceState(null,'',window.location.pathname+window.location.search+'#'+entryHash);
+else if(clearAuth)window.history.replaceState(null,'',window.location.pathname+window.location.search);
+const destination=appUrl+'?v=20261008-auth'+(validVehicle?'&vehicle='+encodeURIComponent(vehicle):'')+(entryHash?'#'+entryHash:'');
+document.getElementById('openApp').href=destination;
+if(authSupplied&&!clearAuth) {
+  const message=document.querySelector('main p');message.textContent=savedAuth?'このブラウザーに受付利用の登録を保存しました。「代車管理を開く」からご利用ください。':'保存を確認できません。SafariやChromeの通常モードでこのリンクを開き直してください。';
+  document.querySelector('small').textContent='この入口は端末専用です。他の人へ送らず、このページでブックマーク／ホーム画面へ追加してください。';
+}
+const installed=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+if((installed||validVehicle)&&!authSupplied) {
+  document.querySelector('main').innerHTML='<img src="icon.png?v=20261008" alt="NCGroup"><p role="status">読み込み中…</p>';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.location.replace(destination)));
 }
 </script>
 </body>
